@@ -5,8 +5,7 @@
 
 const char *USAGE = R"([flags ...]
 	-h, --help     Print this message and exit.
-	-s, --secrets  Show secret values. Without this flag, all secret values
-	               will appear as '***'.
+	-s, --secrets  Show secret values.
 )";
 
 bool show_secrets = false;
@@ -63,10 +62,12 @@ void show_collection(gpointer col_p, gpointer _user_data) {
 	SecretCollection *col = static_cast<SecretCollection *>(col_p);
 
 	gchar *label = secret_collection_get_label(col);
-	std::cout << "Collection:\t" << label << "\n\n";
+	std::cout << "Collection: " << label << "\n";
 
 	GList *items = secret_collection_get_items(col);
 	g_list_foreach(items, show_item, NULL);
+
+    std::cout << "\n";
 
 	g_free(label);
 	g_list_free(items);
@@ -77,14 +78,23 @@ void show_item(gpointer item_p, gpointer _user_data) {
 	SecretItem *item = static_cast<SecretItem *>(item_p);
 
 	gchar *label = secret_item_get_label(item);
-	std::cout << "Item:\t" << label << '\n';
+	std::cout << label << " (";
 
-	if (show_secrets) show_secret(item);
+    bool first;
+	if (show_secrets)
+    {
+        first = false;
+        show_secret(item);
+    }
+    else
+    {
+        first = true;
+    }
 
 	GHashTable *attribs = secret_item_get_attributes(item);
-	g_hash_table_foreach(attribs, show_attrib, NULL);
+	g_hash_table_foreach(attribs, show_attrib, &first);
 
-	std::cout << '\n';
+	std::cout << ")\n";
 
 	g_hash_table_unref(attribs);
 	g_free(label);
@@ -101,7 +111,7 @@ void show_secret(SecretItem *item) {
 		gsize len;
 		const gchar *value = secret_value_get(val, &len);
 		// value is not nessesarily null terminated
-		std::printf("Secret:\t%.*s\n", len, value);
+		std::printf("secret - %.*s", len, value);
 		secret_value_unref(val);
 	}
 }
@@ -109,19 +119,27 @@ void show_secret(SecretItem *item) {
 void show_attrib(gpointer key_p, gpointer val_p, gpointer _user_data) {
 	gchar *key = static_cast<gchar *>(key_p);
 	gchar *val = static_cast<gchar *>(val_p);
+    bool* first = static_cast<bool*>(_user_data);
 
-	std::cout << "Key:\t" << key << "\nValue:\t" << val << '\n';
+    if (not *first)
+    {
+        std::cout << ", ";
+    }
+
+    std::cout << key << " - " << val;
+
+    *first = false;
 }
 
 void handle_error(GError *err, bool fatal) {
 	if (err == NULL) return;
 
 	if (err->domain != SECRET_ERROR) {
-		std::cerr << "Error: Couldn't get secret service for unkown reason\n";
+		std::cerr << "Error: Couldn't get secret service for unknown reason\n";
 	} else {
 		switch (err->code) {
 			case SECRET_ERROR_PROTOCOL:
-				std::cerr << "Error: Recieived invalid data from secret Service\n";
+				std::cerr << "Error: Received invalid data from secret Service\n";
 				break;
 			case SECRET_ERROR_IS_LOCKED:
 				std::cerr << "Error: Secret item or collection is locked\n";
